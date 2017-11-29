@@ -101,15 +101,6 @@ class TwoLayerNet(object):
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
         loss, dx = softmax_loss(scores, y)
-        shifted_logits = scores - np.max(scores, axis=1, keepdims=True)
-        Z = np.sum(np.exp(shifted_logits), axis=1, keepdims=True)
-        log_probs = shifted_logits - np.log(Z)
-        probs = np.exp(log_probs)
-        N = scores.shape[0]
-        loss = -np.sum(log_probs[np.arange(N), y]) / N
-        dx = probs.copy()
-        dx[np.arange(N), y] -= 1
-        dx /= N
 
         l2_loss = np.sum(self.params['W1'] ** 2)
         l2_loss += np.sum(self.params['W2'] ** 2)
@@ -181,6 +172,8 @@ class FullyConnectedNet(object):
         self.dtype = dtype
         self.params = {}
 
+        print("num_layers", self.num_layers)
+
         ############################################################################
         # TODO: Initialize the parameters of the network, storing all values in    #
         # the self.params dictionary. Store weights and biases for the first layer #
@@ -233,6 +226,7 @@ class FullyConnectedNet(object):
 
         Input / output: Same as TwoLayerNet above.
         """
+
         X = X.astype(self.dtype)
         mode = 'test' if y is None else 'train'
 
@@ -258,10 +252,31 @@ class FullyConnectedNet(object):
         # layer, etc.                                                              #
         ############################################################################
 
-        for i in range(0, self.num_layers):
+        caches = {}
+        out = X
+
+        def b(layer_num):
+            return self.params['b{}'.format(layer_num)]
+
+        def set_b(layer_num, weights):
+            self.params['b{}'.format(layer_num)] = weights
+
+        def w(layer_num):
+            return self.params['W{}'.format(layer_num)]
+
+        def set_w(layer_num, weights):
+            self.params['W{}'.format(layer_num)] = weights
+
+        for i in range(0, self.num_layers - 1):
             layer_num = i + 1
-        out1, cache1 = affine_relu_forward(X, self.params['W1'], self.params['b1'])
-        scores, cache2 = affine_forward(out1, self.params['W2'], self.params['b2'])
+            out, _cache = affine_relu_forward(out, w(layer_num), b(layer_num))
+            caches[layer_num] = _cache
+
+        # last affine layer
+        layer_num = self.num_layers
+        scores, _cache = affine_forward(out, w(layer_num), b(layer_num))
+        caches[layer_num] = _cache
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -284,7 +299,27 @@ class FullyConnectedNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
-        pass
+        loss, dx = softmax_loss(scores, y)
+
+        l2_loss = 0.
+
+        layer_num = self.num_layers
+        dx, _dw, _db = affine_backward(dx, caches[layer_num])
+        l2_loss += np.sum(w(layer_num) ** 2)
+        _dw += self.reg * w(layer_num)
+        grads['W{}'.format(layer_num)] = _dw
+        grads['b{}'.format(layer_num)] = _db
+
+        for i in reversed(range(0, self.num_layers - 1)):
+            layer_num = i + 1
+            dx, _dw, _db = affine_relu_backward(dx, caches[layer_num])
+            l2_loss += np.sum(w(layer_num) ** 2)
+            _dw += self.reg * w(layer_num)
+            grads['W{}'.format(layer_num)] = _dw
+            grads['b{}'.format(layer_num)] = _db
+
+        loss += l2_loss * self.reg * 0.5
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
